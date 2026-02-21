@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <vector>
 #include "SerialPort.hpp"
+#include "Frame.hpp"
 
 class DataLinkLayer {
     public:
