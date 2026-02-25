@@ -7,7 +7,7 @@ SerialPort::SerialPort(const std::string& device, int baudrate) {
 }
 
 SerialPort::~SerialPort() {
-    
+    tcsetattr(STDIN_FILENO, TCSANOW, &old_keyboard); // Restore settings
 }
 
 std::string SerialPort::getDeviceName() {
@@ -24,33 +24,40 @@ bool SerialPort::openPort() {
     this->pfd.fd = fd;
     this->pfd.events = POLLIN;
 
-    struct termios tty;
-    if(tcgetattr(fd, &tty) != 0) return false;
+    if(tcgetattr(fd, &tty_old) != 0) return false;
+    tty_new = tty_old;
+    cfsetispeed(&tty_new, baudrate);
+    cfsetospeed(&tty_new, baudrate);
 
-    cfsetispeed(&tty, baudrate);
-    cfsetospeed(&tty, baudrate);
+    tty_new.c_cflag |= (CLOCAL | CREAD);
+    tty_new.c_cflag &= ~CSIZE;
+    tty_new.c_cflag |= CS8;
 
-    tty.c_cflag |= (CLOCAL | CREAD);
-    tty.c_cflag &= ~CSIZE;
-    tty.c_cflag |= CS8;
+    tty_new.c_cflag &= ~PARENB;
+    tty_new.c_cflag &= ~CSTOPB;
+    tty_new.c_cflag &= ~CRTSCTS;
 
-    tty.c_cflag &= ~PARENB;
-    tty.c_cflag &= ~CSTOPB;
-    tty.c_cflag &= ~CRTSCTS;
+    tty_new.c_lflag = 0;
+    tty_new.c_oflag = 0;
+    tty_new.c_iflag = 0;
 
-    tty.c_lflag = 0;
-    tty.c_oflag = 0;
-    tty.c_iflag = 0;
+    tty_new.c_cc[VMIN]  = 1;  // return as soon as 1 byte is available
+    tty_new.c_cc[VTIME] = 0;  // no timeout
 
-    tty.c_cc[VMIN]  = 1;  // return as soon as 1 byte is available
-    tty.c_cc[VTIME] = 0;  // no timeout
-
-    if (tcsetattr(fd, TCSANOW, &tty) != 0) return false;
-    
+    if (tcsetattr(fd, TCSANOW, &tty_new) != 0) return false;
+    setTerminalRawMode();
     tcflush(fd, TCIFLUSH);
     tcflush(fd, TCOFLUSH);
 
     return true;
+}
+
+void SerialPort::setTerminalRawMode() {
+    tcgetattr(STDIN_FILENO, &old_keyboard); // Save current settings
+    new_keyboard = old_keyboard;
+    // Disable canonical mode (buffering) and local echo
+    new_keyboard.c_lflag &= ~(ICANON | ECHO); 
+    tcsetattr(STDIN_FILENO, TCSANOW, &new_keyboard);
 }
 
 void SerialPort::closePort() {

@@ -6,7 +6,7 @@
 #include "SerialPort.hpp"
 #include "Frame.hpp"
 
-typedef void (*CallbackFunc)(void*, void*);
+typedef void (*CallbackFunc)(std::vector<uint8_t>, void*);
 
 class DataLinkLayer {
     public:

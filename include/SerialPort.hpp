@@ -17,7 +17,7 @@ class SerialPort {
         bool openPort();
         void closePort();
         std::string getDeviceName();
-
+        void setTerminalRawMode();
         ssize_t writeBytes(const uint8_t* data, size_t size);
         ssize_t readBytes(uint8_t* buffer, size_t size);
 
@@ -25,6 +25,7 @@ class SerialPort {
         int fd;
         int baudrate;
         std::string device;
-        struct termios tty;
+        struct termios tty_old, tty_new;
+        struct termios old_keyboard, new_keyboard;
         pollfd pfd;
 };

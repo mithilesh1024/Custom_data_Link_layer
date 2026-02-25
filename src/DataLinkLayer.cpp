@@ -48,7 +48,7 @@ void DataLinkLayer::receiveLoop() {
                     std::cout.write(reinterpret_cast<char*>(msg.payload.data()), msg.payload.size());
                     std::cout << std::endl;
                 #endif
-                callback(msg.payload.data(), serial.getDeviceName().data());
+                callback(msg.payload, serial.getDeviceName().data());
             }
         }
     }
