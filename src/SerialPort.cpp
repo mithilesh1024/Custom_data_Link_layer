@@ -4,7 +4,14 @@ SerialPort::SerialPort(const std::string& device, int baudrate) {
     this->device = device;
     this->baudrate = baudrate;
     this->fd = -1;
+}
+
+SerialPort::~SerialPort() {
     
+}
+
+std::string SerialPort::getDeviceName() {
+    return this->device;
 }
 
 bool SerialPort::openPort() {
@@ -13,6 +20,9 @@ bool SerialPort::openPort() {
         std::cout<<" Error in opening "<<device<<std::endl;
         return false;
     }
+
+    this->pfd.fd = fd;
+    this->pfd.events = POLLIN;
 
     struct termios tty;
     if(tcgetattr(fd, &tty) != 0) return false;
@@ -35,9 +45,10 @@ bool SerialPort::openPort() {
     tty.c_cc[VMIN]  = 1;  // return as soon as 1 byte is available
     tty.c_cc[VTIME] = 0;  // no timeout
 
-    tcflush(fd, TCIFLUSH);
-
     if (tcsetattr(fd, TCSANOW, &tty) != 0) return false;
+    
+    tcflush(fd, TCIFLUSH);
+    tcflush(fd, TCOFLUSH);
 
     return true;
 }
@@ -59,13 +70,19 @@ ssize_t SerialPort::writeBytes(const uint8_t* data, size_t size) {
 
 ssize_t SerialPort::readBytes(uint8_t* buffer, size_t size) {
 
+    ssize_t bytesRead = 0;
     if(fd == -1) return 0;
-    ssize_t bytesRead = read(fd, buffer, size);
-    if(bytesRead < 0) {
-        perror("read");
-        return 0;
+    int ret = poll(&pfd, 1, 0);
+    if(ret == -1){
+        std::cout<<"Error in polling";
+    }else{
+        bytesRead = read(fd, buffer, size);
+        if(bytesRead < 0) {
+            perror("read");
+            return 0;
+        }
     }
-
+    
     return bytesRead;
 }
 
