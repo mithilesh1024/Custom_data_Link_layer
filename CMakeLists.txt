@@ -15,6 +15,7 @@ add_library(datalink_lib
     src/SerialPort.cpp
     src/Frame.cpp
     src/DataLinkLayer.cpp
+    src/ByteStuffer.cpp
 )
 
 target_include_directories(datalink_lib PUBLIC include)

@@ -15,15 +15,15 @@ class DataLinkLayer {
     public:
         DataLinkLayer(SerialPort& port, CallbackFunc cb);
         ~DataLinkLayer();
-        void sendData(const std::vector<uint8_t>& data, Frame::message_type ack = Frame::message_type::DATA);
+        void sendData(const std::vector<uint8_t>& data, MessageType ack = MessageType::DATA);
         void convertDataToPayload(const std::string str, std::vector<uint8_t>& payload);
         
     private:
         void start();
         void receiveLoop();
         void sendFrame(uint8_t type, const std::vector<uint8_t>& payload);
-        void handleFrame(Frame::SerialData &data);
-        void sendAck(const uint8_t seqNum, Frame::message_type ack = Frame::message_type::ACK);
+        void handleFrame(SerialData &data);
+        void sendAck(const uint8_t seqNum, MessageType ack = MessageType::ACK);
 
         SerialPort& serial;
         std::thread listening_thread;

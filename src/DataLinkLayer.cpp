@@ -17,13 +17,13 @@ void DataLinkLayer::start() {
     listening_thread = std::thread(&DataLinkLayer::receiveLoop, this);
 }
 
-void DataLinkLayer::sendData(const std::vector<uint8_t>& data, Frame::message_type ack) {
+void DataLinkLayer::sendData(const std::vector<uint8_t>& data, MessageType ack) {
 
     std::queue<std::vector<uint8_t>> packets = Frame::breakMessage(data);
     int current_seq = 0;
     while(!packets.empty()){
         if(packets.size() == 1) {
-            ack = Frame::LAST_DATA;
+            ack = MessageType::LAST_DATA;
         }
         std::vector<uint8_t> curr_msg = packets.front();
         #ifdef COMM_TEST_MODE
@@ -59,7 +59,7 @@ void DataLinkLayer::sendData(const std::vector<uint8_t>& data, Frame::message_ty
     }
 }
 
-void DataLinkLayer::sendAck(const uint8_t seqNum, Frame::message_type ack) {
+void DataLinkLayer::sendAck(const uint8_t seqNum, MessageType ack) {
     auto frame = Frame::encode(0x01, {}, seqNum, ack);
     serial.writeBytes(frame.data(), frame.size());
 }
@@ -77,7 +77,7 @@ void DataLinkLayer::receiveLoop() {
         #endif
         if (n > 0) {
             std::vector<uint8_t> raw(buffer.begin(), buffer.begin() + n);
-            enum Frame::MessageQueueStatus already_received;
+            enum MessageQueueStatus already_received;
             int seq_num;
             auto chunk_msg = Frame::updateVector(raw, already_received, seq_num);
             handleFrame(chunk_msg);
@@ -95,12 +95,12 @@ void DataLinkLayer::sendFrame(uint8_t type, const std::vector<uint8_t>& payload)
 
 }
 
-void DataLinkLayer::handleFrame(Frame::SerialData &data) {
+void DataLinkLayer::handleFrame(SerialData &data) {
     switch(data.header.type) {
-        case Frame::message_type::DATA:
+        case MessageType::DATA:
             sendAck(data.header.seqNum);
             break;
-        case Frame::message_type::LAST_DATA:
+        case MessageType::LAST_DATA:
         {
             #ifdef COMM_TEST_MODE
                 std::cout<<"Sending ack for last message\n";
@@ -121,7 +121,7 @@ void DataLinkLayer::handleFrame(Frame::SerialData &data) {
             // }
             break;
         }
-        case Frame::message_type::ACK: 
+        case MessageType::ACK: 
         {
             std::lock_guard<std::mutex> lock(ack_mutex);
             last_ack_seq = data.header.seqNum;

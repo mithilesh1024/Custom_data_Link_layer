@@ -1,21 +1,34 @@
 #include "Frame.hpp"
 
-std::vector<std::optional<Frame::SerialData>> Frame::queue;
+std::vector<std::optional<SerialData>> Frame::queue;
 
-std::vector<uint8_t> Frame::encode(uint8_t type, const std::vector<uint8_t>& payload, const uint8_t seqNum, const enum message_type ack ) {
+std::vector<uint8_t> Frame::encode(uint8_t type, const std::vector<uint8_t>& payload, const uint8_t seqNum, const enum MessageType ack ) {
     std::vector<uint8_t> frame {};
-    frame.push_back(PACKET_DELIMITOR);
-    frame.push_back(ack);
-    frame.push_back(seqNum);
-    frame.push_back(type);
-    frame.push_back(payload.size());
-    frame.insert(frame.end(), payload.begin(), payload.end());
+    BufferWriter buffer{frame};
+    
+    // 1. Start with the Delimiter
+    buffer.writeUint8(ByteStuffer::DELIM);
 
+    // 2. Prepare the Header & Payload
+    std::vector<uint8_t> contents;
+    BufferWriter stuffing_buf{contents};
+    stuffing_buf.writeUint8(static_cast<uint8_t>(ack));
+    stuffing_buf.writeUint8(seqNum);
+    stuffing_buf.writeUint8(type);
+    stuffing_buf.writeUint8(payload.size()); // Original size
+    stuffing_buf.writeBytes(payload);
+
+    // 3. Calculate CRC on the CLEAN data
     uint16_t crc = crc16_ccitt(payload.data(), payload.size());
-    frame.push_back((crc >> 8) & 0xFF);
-    frame.push_back(crc & 0xFF);
+    stuffing_buf.writeUint16(crc); 
 
-    frame.push_back(PACKET_DELIMITOR);
+    // 4. Stuff the contents (Disguise any 0x7D or 0x7C)
+    std::vector<uint8_t> stuffedBody = ByteStuffer::stuff(contents);
+    buffer.writeBytes(stuffedBody);
+
+    // 5. End with the Delimiter
+    buffer.writeUint8(ByteStuffer::DELIM);
+
     return frame;
 }
 
@@ -46,32 +59,32 @@ void Frame::joinMessage(const std::vector<uint8_t>& chunks, std::vector<uint8_t>
     final_payload.insert(final_payload.end(), chunks.begin(), chunks.end());
 }
 
-Frame::SerialData Frame::updateVector(const std::vector<uint8_t>& payload, enum Frame::MessageQueueStatus &alreadyRecieved, int &seq_num) {
+SerialData Frame::updateVector(const std::vector<uint8_t>& payload, enum MessageQueueStatus &alreadyRecieved, int &seq_num) {
     std::vector<std::vector<uint8_t>> packets = getPackets(payload);
-    std::vector<Frame::SerialData> res = convertEachMessageToStructure(packets);
+    std::vector<SerialData> res = convertEachMessageToStructure(packets);
     
     #ifdef COMM_TEST_MODE
         printFrame(res);
     #endif
 
     for (auto r : res) {
-        if(r.header.type == Frame::message_type::ACK) {
+        if(r.header.type == MessageType::ACK) {
             return r; 
         }
         int seq = r.header.seqNum;
         seq_num = seq;
         if(seq >= Frame::queue.size()){
             Frame::queue.resize(seq + 1);
-            std::optional<Frame::SerialData> temp = r;
+            std::optional<SerialData> temp = r;
             Frame::queue[seq] = r;
-            alreadyRecieved = Frame::MessageQueueStatus::NEW_ADDED;
+            alreadyRecieved = MessageQueueStatus::NEW_ADDED;
         }else {
             if(!Frame::queue[seq].has_value()){
-                alreadyRecieved = Frame::MessageQueueStatus::NEW_ADDED;
-                std::optional<Frame::SerialData> temp = r;
+                alreadyRecieved = MessageQueueStatus::NEW_ADDED;
+                std::optional<SerialData> temp = r;
                 Frame::queue.insert(Frame::queue.begin() + seq, temp);
             }else {
-                alreadyRecieved = Frame::MessageQueueStatus::ALREADY_PRESENT;
+                alreadyRecieved = MessageQueueStatus::ALREADY_PRESENT;
             }
         }
         return r;
@@ -80,13 +93,13 @@ Frame::SerialData Frame::updateVector(const std::vector<uint8_t>& payload, enum 
     return {};
 }
 
-void Frame::printFrame(std::vector<Frame::SerialData> frame) {
+void Frame::printFrame(std::vector<SerialData> frame) {
     for(auto data : frame) {
         std::string typeStr;
         switch (data.header.type) {
-            case Frame::message_type::ACK:       typeStr = "ACK"; break;
-            case Frame::message_type::DATA:      typeStr = "DATA"; break;
-            case Frame::message_type::LAST_DATA: typeStr = "LAST_DATA"; break;
+            case MessageType::ACK:       typeStr = "ACK"; break;
+            case MessageType::DATA:      typeStr = "DATA"; break;
+            case MessageType::LAST_DATA: typeStr = "LAST_DATA"; break;
             default:                             typeStr = "UNKNOWN"; break;
         }
         
@@ -104,8 +117,8 @@ void Frame::printFrame(std::vector<Frame::SerialData> frame) {
     }
 }
 
-bool Frame::isLastMessage(const Frame::SerialData& msg) {
-    if(msg.header.type == Frame::message_type::LAST_DATA) {
+bool Frame::isLastMessage(const SerialData& msg) {
+    if(msg.header.type == MessageType::LAST_DATA) {
         return true;
     }
     return false;
@@ -137,17 +150,36 @@ void Frame::printHex(const std::vector<uint8_t> raw) {
 std::vector<std::vector<uint8_t>> Frame::getPackets(const std::vector<uint8_t> raw) {
     std::vector<std::vector<uint8_t>> packets;
 
-    for(int i=0;i<raw.size();i++){
-        if(raw[i] == PACKET_DELIMITOR){
-            std::vector<uint8_t> temp;
-            temp.push_back(raw[i]);
-            i++;
-            while(raw[i] != PACKET_DELIMITOR){
-                temp.push_back(raw[i]);
-                i++;
+    std::vector<uint8_t> currentPacket;
+    bool inPacket = false;
+    bool escaped = false;
+
+    for (size_t i = 0; i < raw.size(); i++) {
+        uint8_t byte = raw[i];
+
+        if (!inPacket) {
+            if (byte == ByteStuffer::DELIM) {
+                inPacket = true;
+                currentPacket.push_back(byte);
             }
-            if(raw[i] == PACKET_DELIMITOR) temp.push_back(raw[i]);
-            packets.push_back(temp);
+        } else {
+            currentPacket.push_back(byte);
+
+            if (escaped) {
+                // This byte was preceded by 0x7C, so it's just data.
+                // We don't check if it's a delimiter here.
+                escaped = false; 
+            } else if (byte == 0x7C) {
+                // We hit an escape byte! 
+                // The NEXT byte must be treated as data.
+                escaped = true;
+            } else if (byte == ByteStuffer::DELIM) {
+                // A delimiter with no escape before it? 
+                // That's the real end of the packet.
+                packets.push_back(currentPacket);
+                currentPacket.clear();
+                inPacket = false;
+            }
         }
     }
     #ifdef COMM_TEST_MODE
@@ -156,29 +188,27 @@ std::vector<std::vector<uint8_t>> Frame::getPackets(const std::vector<uint8_t> r
     return packets;
 }
 
-std::vector<Frame::SerialData> Frame::convertEachMessageToStructure(std::vector<std::vector<uint8_t>>& packets) {
-    std::vector<Frame::SerialData> res;
+std::vector<SerialData> Frame::convertEachMessageToStructure(std::vector<std::vector<uint8_t>>& packets) {
+    std::vector<SerialData> res;
     for(auto p : packets){
+        std::vector<uint8_t> clean = ByteStuffer::unstuff(p);
         #ifdef COMM_TEST_MODE
-            printHex(p);
+            printHex(clean);
         #endif
-        // std::cout.write(reinterpret_cast<char*>(p.data()), p.size());
-        Frame::SerialData sd;
-        int index = 1;
-        if(p.size() < 8) continue;
-        if((p.front() != PACKET_DELIMITOR) || (p.back() != PACKET_DELIMITOR)) continue;
+        BufferReader reader {clean};
         
-        sd.header.type = static_cast<Frame::message_type>(p[index++]);
-        sd.header.seqNum = p[index++];
+        SerialData sd;
+        int index = 1;
+        reader.readUint8();
+        sd.header.type = static_cast<MessageType>(reader.readUint8());
+        sd.header.seqNum = reader.readUint8();
 
-        sd.type = p[index++];
-        sd.length = p[index++];
+        sd.type = reader.readUint8();
+        sd.length = reader.readUint8();
     
-        if (sd.length != p.size() - 8) continue;
-    
-        sd.payload.assign(p.begin() + 5, p.begin() + 5 + sd.length);
+        sd.payload = reader.readBytes(sd.length);
 
-        uint16_t received_crc = (p[sd.length + 5] << 8) | p[sd.length + 6];
+        uint16_t received_crc = reader.readUint16();
         uint16_t cal_crc = crc16_ccitt(sd.payload.data(), sd.length);  
         if(received_crc == cal_crc)
             res.push_back(sd);

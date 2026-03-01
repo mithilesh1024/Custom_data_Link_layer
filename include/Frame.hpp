@@ -14,48 +14,30 @@ FRAME STRUCTURE
 #include <optional>
 #include <algorithm>
 
-#define PACKET_DELIMITOR    0x7D
+#include "ByteStuffer.hpp"
+#include "BufferReader.hpp"
+#include "BufferWriter.hpp"
+#include "ProtocolTyes.hpp"
+
 #define PACKET_SIZE         0x02
 
 class Frame {
     public:
-        enum MessageQueueStatus {
-            ALREADY_PRESENT,
-            NEW_ADDED
-        };
 
-        enum message_type {
-            ACK,
-            DATA,
-            LAST_DATA
-        };
-
-        struct SerialDataHeader {
-            Frame::message_type type;
-            uint8_t seqNum;
-        };
-
-        struct SerialData {
-            Frame::SerialDataHeader header;
-            uint8_t type;
-            uint8_t length;
-            std::vector<uint8_t> payload;
-        };
-
-        static std::vector<uint8_t> encode(uint8_t type, const std::vector<uint8_t>& payload, const uint8_t seqNum, const enum message_type ack);
+        static std::vector<uint8_t> encode(uint8_t type, const std::vector<uint8_t>& payload, const uint8_t seqNum, const enum MessageType ack);
         static std::vector<uint8_t> decode();
         static std::queue<std::vector<uint8_t>> breakMessage(const std::vector<uint8_t>& payload);
         static void joinMessage(const std::vector<uint8_t>& chunks, std::vector<uint8_t>& final_payload);
-        static Frame::SerialData updateVector(const std::vector<uint8_t>& payload, enum Frame::MessageQueueStatus &alreadyRecieved, int &seq_num);
-        static bool isLastMessage(const Frame::SerialData& msg);
+        static SerialData updateVector(const std::vector<uint8_t>& payload, enum MessageQueueStatus &alreadyRecieved, int &seq_num);
+        static bool isLastMessage(const SerialData& msg);
     
     private:
         static uint16_t crc16_ccitt(const uint8_t *data, int length);
         static void printHex(const std::vector<uint8_t> raw);
         static std::vector<std::vector<uint8_t>> getPackets(const std::vector<uint8_t> raw);
-        static std::vector<Frame::SerialData> convertEachMessageToStructure(std::vector<std::vector<uint8_t>>& packets);
-        static void printFrame(std::vector<Frame::SerialData>);
+        static std::vector<SerialData> convertEachMessageToStructure(std::vector<std::vector<uint8_t>>& packets);
+        static void printFrame(std::vector<SerialData>);
 
-        static std::vector<std::optional<Frame::SerialData>> queue;
+        static std::vector<std::optional<SerialData>> queue;
 
 };
