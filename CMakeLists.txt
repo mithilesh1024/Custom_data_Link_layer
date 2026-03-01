@@ -23,13 +23,13 @@ target_include_directories(datalink_lib PUBLIC include)
 target_link_libraries(datalink_lib PUBLIC Threads::Threads)
 
 # ---- Communicator A ----
-add_executable(communicatorA
-    apps/communicatorA.cpp
-)
+#add_executable(communicatorA
+#    apps/communicatorA.cpp
+#)
 
-target_link_libraries(communicatorA
-    datalink_lib
-)
+#target_link_libraries(communicatorA
+#    datalink_lib
+#)
 
 # ---- Communicator B ----
 add_executable(communicatorB
@@ -41,5 +41,5 @@ target_link_libraries(communicatorB
 )
 
 # ---- Add compile-time flag for both executables ----
-target_compile_definitions(communicatorA PUBLIC COMM_TEST_MODE=0)
+#target_compile_definitions(communicatorA PUBLIC COMM_TEST_MODE=0)
 target_compile_definitions(communicatorB PUBLIC COMM_TEST_MODE=0)

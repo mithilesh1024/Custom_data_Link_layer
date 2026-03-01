@@ -12,7 +12,6 @@
 #include "SerialPort.hpp"
 #include "DataLinkLayer.hpp"
 
-
 std::mutex cout_mutex;
 std::string input;
 
